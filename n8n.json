@@ -1,0 +1,492 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -992,
+        -112
+      ],
+      "id": "25de8a78-b3f5-4e0b-8a0a-c42071d3994d",
+      "name": "When chat message received",
+      "webhookId": "450d6dd7-3313-425d-ac03-6bd0c6e4420d"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -256,
+        96
+      ],
+      "id": "52f9c6b5-acd5-4b73-a0b6-7652fb2fe818",
+      "name": "Get Volume"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -128,
+        -256
+      ],
+      "id": "ee9c4984-3a8d-4508-aa70-65bd641a8091",
+      "name": "Get Search Competition"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "search_information.total_results"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        80,
+        -352
+      ],
+      "id": "a86da2a3-c6cd-4e4e-84fa-277b0b04acee",
+      "name": "All Competitions"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "interest_over_time.timeline_data[0].values[0].extracted_value"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        0
+      ],
+      "id": "670e2079-2dd1-4ffa-98a3-c5e2be63924e",
+      "name": "All Volumes"
+    },
+    {
+      "parameters": {
+        "jsCode": "// # Keyword Scoring Metrics Explained\n\n// ## 1. **keyword**\n// - **What it is**: The actual search term/phrase you're analyzing\n// - **Example**: \"Remote Internship Opportunities\"\n// - **Purpose**: The target keyword you're considering for SEO\n\n// ## 2. **volume**\n// - **What it is**: Search interest from Google Trends (0-100 scale)\n// - **Source**: `interest_over_time.timeline_data[0].values[0].extracted_value`\n// - **Meaning**: \n//   - 100 = Peak popularity for that keyword\n//   - 50 = Half as popular as the peak\n//   - 0 = Very low search interest\n// - **Example**: Volume of 37 means 37% of peak search interest\n// - **Why it matters**: Higher volume = more people searching = more potential traffic\n\n// ## 3. **competition**\n// - **What it is**: Total number of search results for that keyword\n// - **Source**: `search_information.total_results` from Google search\n// - **Example**: 15,000,000 means 15 million web pages contain this keyword\n// - **Why it matters**: Higher competition = harder to rank = more effort needed\n\n// ## 4. **opportunity_score**\n// - **Formula**: `(volume × 10,000,000) ÷ competition`\n// - **What it measures**: How much search interest exists relative to competition\n// - **Interpretation**:\n//   - Higher score = Better opportunity\n//   - Combines good volume with manageable competition\n// - **Example**: Score of 24.67 is better than 5.23\n// - **Best for**: Finding keywords with decent traffic potential that aren't oversaturated\n\n// ## 5. **log_score**\n// - **Formula**: `(log(volume + 1) × 1000) ÷ log(competition + 1)`\n// - **What it does**: Uses logarithmic scaling to handle extreme differences in numbers\n// - **Purpose**: Prevents very large competition numbers from overwhelming small volume numbers\n// - **When useful**: When you have keywords with vastly different competition levels\n// - **Interpretation**: Higher = better, but scale is different from opportunity_score\n\n// ## 6. **percentage_score**\n// - **Formula**: `(volume ÷ (competition ÷ 1,000,000)) × 100`\n// - **What it shows**: Volume as a percentage relative to competition in millions\n// - **Example**: Score of 0.25 means your volume is 0.25% relative to competition per million\n// - **Purpose**: Easy-to-understand percentage format\n\n// ## 7. **score** (Main Score)\n// - **What it is**: The primary ranking metric (copy of opportunity_score in your case)\n// - **Purpose**: Single number to sort and rank all keywords\n// - **How to use**: Sort keywords by this score to find the best opportunities\n\n// ---\n\n// ## 🎯 **How to Interpret Results**\n\n// ### **High Opportunity Keywords** (Good targets):\n// - **High volume** (20-100): Decent search interest\n// - **Lower competition** (< 10 million): Manageable to compete\n// - **High opportunity_score** (> 10): Good volume-to-competition ratio\n\n// ### **Low Opportunity Keywords** (Avoid):\n// - **Low volume** (0-5): Very little search interest\n// - **High competition** (> 100 million): Too competitive\n// - **Low opportunity_score** (< 1): Poor volume-to-competition ratio\n\n// ### **Example Analysis**:\n// ```\n// Keyword: \"Remote Internship Opportunities\"\n// - Volume: 37 (decent search interest)\n// - Competition: 15,000,000 (moderate competition)\n// - Opportunity Score: 24.67 (good opportunity!)\n// - Conclusion: Worth targeting - decent traffic potential with manageable competition\n// ```\n\n// ---\n\n// ## 🚀 **Recommended Strategy**\n\n// 1. **Sort by opportunity_score** (descending)\n// 2. **Focus on top 3-5 keywords** with highest scores\n// 3. **Verify volume > 10** (avoid zero-traffic keywords)\n// 4. **Check competition < 50M** (avoid oversaturated markets)\n// 5. **Create content targeting these high-opportunity keywords**\n\n\n// Get aggregated data from aggregate nodes\nconst totalResults = $('All Competitions').first().json.total_results || [];\nconst extractedValues = $('All Volumes').first().json.extracted_value || [];\n\n// Get keywords from the original node\nconst keywordData = $('Get All Keywords').all();\nconst keywords = keywordData.map(item => item.json.keyword) || [];\n\nlet output = [];\nconst maxLength = Math.max(keywords.length, totalResults.length, extractedValues.length);\n\nfor (let i = 0; i < maxLength; i++) {\n    const keyword = keywords[i] || `keyword_${i + 1}`;\n    const competition = totalResults[i] || 1;\n    const volume = extractedValues[i] || 1;\n    \n    // Method 1: Normalized opportunity score (Volume * multiplier / Competition)\n    const opportunityScore = (volume * 10000000) / competition; // Multiply by 10M for readability\n    \n    // Method 2: Log-based score for better distribution\n    const logScore = volume > 0 && competition > 0 ? \n        (Math.log(volume + 1) * 1000) / Math.log(competition + 1) : 0;\n    \n    // Method 3: Percentage-based score\n    const percentageScore = (volume / (competition / 1000000)) * 100;\n    \n    output.push({\n        json: {\n            keyword,\n            volume,\n            competition,\n            opportunity_score: opportunityScore,\n            log_score: logScore,\n            percentage_score: percentageScore,\n            // Use opportunity score as main score (higher = better)\n            score: opportunityScore\n        }\n    });\n}\n\n// Sort by score in DESCENDING order (highest scores = best opportunities)\noutput.sort((a, b) => b.json.score - a.json.score);\n\nconsole.log('Top 5 keyword opportunities:');\noutput.slice(0, 5).forEach((item, index) => {\n    console.log(`${index + 1}. ${item.json.keyword}: ${item.json.score.toFixed(4)}`);\n});\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        -16
+      ],
+      "id": "949c0027-ee53-4d2a-a131-f3945a7bbe82",
+      "name": "Scores"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $input.first().json.content[0].text\n\n// Remove newlines\nconst trimmedText = text.replace(/\\n/g, '');\n\n// Split into an array\nconst keywordsArray = trimmedText.split(\", \");\n\n// Return in n8n compatible format\nreturn keywordsArray.map(keyword => ({\n  json: { keyword:keyword.trim() }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -112
+      ],
+      "id": "f063e96f-5aa1-49fa-bbae-fd8ccb4f4a4b",
+      "name": "Get All Keywords"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        480,
+        -16
+      ],
+      "id": "b5c8a87a-b362-4f47-a3ef-ffcf97a0709b",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-20250514"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=## Overview\nGenerate 5 SEO keywords related to \"{{ $json.chatInput }}\" that have high search volume but low competition. Return only the keywords separated by commas in a single line (no line breaks or '\\n').You have access to google_autocomplete tool which you can use to search the latest keywords\n\n##Tools\n**Google_autocomplete** = Used for keyword expansion\n\n## Instruction\n\n1. Need to return the keyword only\n2. No need to perform any types of explanation\n\n## Example Input\n\nRemote Internship\n\n## Wrong Keyword Example\n\n1. here are 5 SEO keywords related to \"Remote Internship\" that have high search volume but likely lower competition:Remote Internships for College Students\n\n2. here are 5 SEO keywords related to \"Remote Internship\" that have high search volume but likely lower competition:Remote Internships for College Students\n\n\n## Correct Keyword Example\n\nGlobal Internship, Remote Internship Opportunities, Remote Global Internship 2025"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        -112
+      ],
+      "id": "cfb7cdda-0c4f-4230-83fe-2d8f9069535b",
+      "name": "Keyword Extension Agent",
+      "credentials": {
+        "anthropicApi": {
+          "id": "KUV9Kj6Qsz6gAf0A",
+          "name": "Local Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "google_autocomplete",
+        "q": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Search_Query__q_', ``, 'string') }}",
+        "additionalFields": {},
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-serpapi.serpApiTool",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        176
+      ],
+      "id": "7354454a-5958-4318-93f8-09d34945f7dc",
+      "name": "Google_autocomplete",
+      "credentials": {
+        "serpApi": {
+          "id": "gkmg6I1drtdQzdSh",
+          "name": "Local SerpApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1qIp-jF48wR9_LcLhzzBXWn3Rqqe7lfPrHWF5t9UVJow",
+          "mode": "list",
+          "cachedResultName": "SEO",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qIp-jF48wR9_LcLhzzBXWn3Rqqe7lfPrHWF5t9UVJow/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qIp-jF48wR9_LcLhzzBXWn3Rqqe7lfPrHWF5t9UVJow/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Volume": "={{ $json.volume }}",
+            "Competition": "={{ $json.competition }}",
+            "AI Keyword": "={{ $json.keyword }}",
+            "Log Score": "={{ $json.log_score }}",
+            "Opportunity Score": "={{ $json.opportunity_score }}",
+            "Percentage Score": "={{ $json.percentage_score }}",
+            "Score": "={{ $json.score }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "AI Keyword",
+              "displayName": "AI Keyword",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Volume",
+              "displayName": "Volume",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Competition",
+              "displayName": "Competition",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opportunity Score",
+              "displayName": "Opportunity Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Log Score",
+              "displayName": "Log Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Percentage Score",
+              "displayName": "Percentage Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        976,
+        -16
+      ],
+      "id": "0d2b0b41-8b43-4eb2-93ef-144df0cf25dd",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "XjwUuU6mB1qgsKD5",
+          "name": "Local Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "q": "={{ $json.keyword }}",
+        "location": "in",
+        "additionalFields": {},
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-serpapi.serpApi",
+      "typeVersion": 1,
+      "position": [
+        96,
+        -192
+      ],
+      "id": "529133fe-9dc9-4448-a739-dcfc24ff6cdb",
+      "name": "Competition Search",
+      "credentials": {
+        "serpApi": {
+          "id": "gkmg6I1drtdQzdSh",
+          "name": "Local SerpApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "google_trends",
+        "q": "={{ $json.keyword }}",
+        "additionalFields": {},
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-serpapi.serpApi",
+      "typeVersion": 1,
+      "position": [
+        0,
+        176
+      ],
+      "id": "d7f69902-75cd-45b8-ba11-df10d2b61761",
+      "name": "Volume Search",
+      "credentials": {
+        "serpApi": {
+          "id": "gkmg6I1drtdQzdSh",
+          "name": "Local SerpApi account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Keyword Extension Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Volume": {
+      "main": [
+        [
+          {
+            "node": "All Volumes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Volume Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Search Competition": {
+      "main": [
+        [
+          {
+            "node": "All Competitions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Competition Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Competitions": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Volumes": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Scores": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Keywords": {
+      "main": [
+        [
+          {
+            "node": "Get Volume",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Search Competition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keyword Extension Agent": {
+      "main": [
+        [
+          {
+            "node": "Get All Keywords",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google_autocomplete": {
+      "ai_tool": [
+        [
+          {
+            "node": "Keyword Extension Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Competition Search": {
+      "main": [
+        [
+          {
+            "node": "Get Search Competition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Volume Search": {
+      "main": [
+        [
+          {
+            "node": "Get Volume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e966da0f46928bfb731db848935a17b2b22a1eaa68dd73f2bd153112c9647f8d"
+  }
+}
