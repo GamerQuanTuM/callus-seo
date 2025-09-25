@@ -9,8 +9,6 @@
 6. [Scoring Algorithm Deep Dive](#scoring-algorithm-deep-dive)
 7. [Error Handling & Optimizations](#error-handling--optimizations)
 8. [Results & Export](#results--export)
-9. [Best Practices](#best-practices)
-10. [Troubleshooting](#troubleshooting)
 
 ---
 
